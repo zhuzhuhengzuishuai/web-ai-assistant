@@ -1,122 +1,172 @@
-// server.js —— 永不退出加强版（DeepSeek + 网页抓取）
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>网页信息引导助手 Demo</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    .left, .right {
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    .left {
+      width: 50%;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+    }
+    .right {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+    }
+    #siteFrame {
+      flex: 1;
+      width: 100%;
+      border: 1px solid #ccc;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    #answerBox {
+      white-space: pre-wrap;
+      border: 1px solid #ccc;
+      padding: 8px;
+      min-height: 80px;
+      margin-top: 8px;
+    }
+    #historyBox {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 8px;
+      margin-top: 8px;
+    }
+    #rawText {
+      height: 120px;
+      margin-top: 8px;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    button {
+      margin-left: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="left">
+    <div>
+      <input
+        id="urlInput"
+        type="text"
+        style="width: 70%;"
+        placeholder="请输入要分析的网页链接，例如：https://www.jd.com"
+      />
+      <button onclick="loadPage()">加载网页</button>
+      <!-- 这里可以放几个快捷按钮 -->
+      <button onclick="quickUrl('https://www.jd.com')">京东首页</button>
+    </div>
+    <iframe id="siteFrame"></iframe>
+  </div>
 
-console.log("===== SERVER.JS START =====");
+  <div class="right">
+    <div>
+      <textarea
+        id="questionInput"
+        rows="3"
+        placeholder="在这里输入你想问 AI 的问题，比如：我应该去哪里查账户余额？"
+      ></textarea>
+      <br />
+      <button onclick="ask()">发送问题</button>
+    </div>
 
-// 捕获所有异常，防止服务器退出
-process.on("uncaughtException", (err) => {
-    console.error("🔥 uncaughtException 捕获到错误：", err);
-});
-process.on("unhandledRejection", (reason) => {
-    console.error("🔥 unhandledRejection 捕获到错误：", reason);
-});
-process.on("exit", (code) => {
-    console.log("⚠️ 进程即将退出，exit code =", code);
-});
+    <div id="answerBox">请先在左侧输入并加载一个网页链接。</div>
+    <div id="historyBox"></div>
 
-const path = require("path");
-console.log("当前运行文件路径:", __filename);
+    <textarea id="rawText" readonly placeholder="这里显示抓取到的原始网页文本（截断后的）"></textarea>
+  </div>
 
-require("dotenv").config();
+  <script>
+    let currentUrl = "";
 
-const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
+    function loadPage() {
+      const url = document.getElementById("urlInput").value.trim();
+      const frame = document.getElementById("siteFrame");
+      if (!url) return;
+      currentUrl = url;
+      frame.src = url;
+      document.getElementById("answerBox").textContent =
+        "已加载网页：" +
+        url +
+        "\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”";
+      document.getElementById("historyBox").innerHTML = "";
+      document.getElementById("rawText").value = "";
+    }
 
-const app = express();
-const PORT = process.env.PORT || 5002;
-  // ⭐ 使用 5002（稳定无冲突）
+    function quickUrl(u) {
+      document.getElementById("urlInput").value = u;
+      loadPage();
+    }
 
-console.log("Node 版本：", process.version);
-console.log("是否读取 DEEPSEEK_API_KEY:", !!process.env.DEEPSEEK_API_KEY);
+    async function ask() {
+      const question = document.getElementById("questionInput").value.trim();
+      const answerBox = document.getElementById("answerBox");
+      const historyBox = document.getElementById("historyBox");
+      const rawBox = document.getElementById("rawText");
 
-app.use(express.json());
+      if (!currentUrl) {
+        answerBox.textContent = "请先在上方输入并加载目标网页链接。";
+        return;
+      }
+      if (!question) {
+        answerBox.textContent = "请输入要询问的问题。";
+        return;
+      }
 
-// 提供 index.html（确保 index.html 与 server.js 在同一目录）
-app.use(express.static(__dirname));
+      answerBox.textContent = "正在读取网页并向大模型提问，请稍等……";
 
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
-});
-
-// ====== 抓取网页 ======
-async function fetchPageText(url) {
-    try {
-        const res = await axios.get(url, {
-            headers: { "User-Agent": "Mozilla/5.0" },
-            timeout: 15000,
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: currentUrl, question }),
         });
 
-        const $ = cheerio.load(res.data);
-        return $("body").text().replace(/\s+/g, " ").slice(0, 5000);
-    } catch (err) {
-        console.error("❌ fetchPageText 抓取失败：", err.message);
-        return "";
-    }
-}
+        const data = await res.json();
 
-// ====== DeepSeek 问答 ======
-async function askDeepSeek(prompt) {
-    try {
-        const res = await axios.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            {
-                model: "deepseek-chat",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.3,
-            },
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-                },
-                timeout: 20000,
-            }
-        );
+        if (data.answer) {
+          historyBox.innerHTML += `<p><b>我：</b>${question}</p>`;
+          historyBox.innerHTML += `<p><b>AI：</b>${data.answer.replace(
+            /\n/g,
+            "<br>"
+          )}</p><hr>`;
 
-        return res.data.choices[0].message.content;
-    } catch (err) {
-        console.error("❌ DeepSeek 调用失败：", err.response?.data || err);
-        return `【AI 暂时不可用】\n错误信息：${err.message}`;
-    }
-}
-
-// ====== /ask API ======
-app.post("/ask", async (req, res) => {
-    console.log("📩 收到 /ask 请求：", req.body);
-
-    const { url, question } = req.body;
-
-    if (!url || !question) {
-        return res.json({ answer: "url / question 缺失" });
+          answerBox.textContent = data.answer;
+          if (data.raw) {
+            rawBox.value = data.raw;
+          }
+        } else {
+          answerBox.textContent = data.error || "后端没有返回答案。";
+        }
+      } catch (e) {
+        console.error(e);
+        answerBox.textContent =
+          "请求失败，请确认云端服务器正在运行，并稍后重试。";
+      }
     }
 
-    const pageText = await fetchPageText(url);
-
-    const prompt = `
-你是一名网页信息引导助手。
-以下是网页内容：${pageText}
-
-用户问题：${question}
-请根据网页内容回答。`;
-
-    const answer = await askDeepSeek(prompt);
-
-    return res.json({ answer, raw: pageText });
-});
-
-// ====== 启动服务器 ======
-const server = app.listen(PORT, () => {
-    console.log(`服务器已启动：http://localhost:${PORT}`);
-    console.log("====== 正在等待请求 ======");
-});
-
-// 监听端口错误 (例如端口占用)
-server.on("error", (err) => {
-    console.error("💥 监听端口时出错（server error）：", err);
-});
-
-// 心跳日志（确保进程活着）
-setInterval(() => {
-    console.log("⏱ 心跳：进程仍在运行");
-}, 5000);
-
+    window.onload = function () {
+      // 初始不自动加载，用户自己输入链接
+    };
+  </script>
+</body>
+</html>
