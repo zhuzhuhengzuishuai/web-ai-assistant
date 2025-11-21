@@ -1,172 +1,134 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <title>网页信息引导助手 Demo</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      height: 100vh;
-      box-sizing: border-box;
-    }
-    .left, .right {
-      padding: 12px;
-      box-sizing: border-box;
-    }
-    .left {
-      width: 50%;
-      border-right: 1px solid #ddd;
-      display: flex;
-      flex-direction: column;
-    }
-    .right {
-      width: 50%;
-      display: flex;
-      flex-direction: column;
-    }
-    #siteFrame {
-      flex: 1;
-      width: 100%;
-      border: 1px solid #ccc;
-    }
-    textarea {
-      width: 100%;
-      box-sizing: border-box;
-      resize: vertical;
-    }
-    #answerBox {
-      white-space: pre-wrap;
-      border: 1px solid #ccc;
-      padding: 8px;
-      min-height: 80px;
-      margin-top: 8px;
-    }
-    #historyBox {
-      flex: 1;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 8px;
-      margin-top: 8px;
-    }
-    #rawText {
-      height: 120px;
-      margin-top: 8px;
-      font-size: 12px;
-      white-space: pre-wrap;
-    }
-    button {
-      margin-left: 4px;
-    }
-  </style>
-</head>
-<body>
-  <div class="left">
-    <div>
-      <input
-        id="urlInput"
-        type="text"
-        style="width: 70%;"
-        placeholder="请输入要分析的网页链接，例如：https://www.jd.com"
-      />
-      <button onclick="loadPage()">加载网页</button>
-      <!-- 这里可以放几个快捷按钮 -->
-      <button onclick="quickUrl('https://www.jd.com')">京东首页</button>
-    </div>
-    <iframe id="siteFrame"></iframe>
-  </div>
+// server.js —— 云部署版（DeepSeek + 网页抓取 + 前后端同域）
 
-  <div class="right">
-    <div>
-      <textarea
-        id="questionInput"
-        rows="3"
-        placeholder="在这里输入你想问 AI 的问题，比如：我应该去哪里查账户余额？"
-      ></textarea>
-      <br />
-      <button onclick="ask()">发送问题</button>
-    </div>
+console.log("===== SERVER.JS START =====");
 
-    <div id="answerBox">请先在左侧输入并加载一个网页链接。</div>
-    <div id="historyBox"></div>
+process.on("uncaughtException", (err) => {
+  console.error("🔥 uncaughtException 捕获到错误：", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 unhandledRejection 捕获到错误：", reason);
+});
 
-    <textarea id="rawText" readonly placeholder="这里显示抓取到的原始网页文本（截断后的）"></textarea>
-  </div>
+const path = require("path");
+console.log("当前运行文件路径:", __filename);
 
-  <script>
-    let currentUrl = "";
+require("dotenv").config();
 
-    function loadPage() {
-      const url = document.getElementById("urlInput").value.trim();
-      const frame = document.getElementById("siteFrame");
-      if (!url) return;
-      currentUrl = url;
-      frame.src = url;
-      document.getElementById("answerBox").textContent =
-        "已加载网页：" +
-        url +
-        "\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”";
-      document.getElementById("historyBox").innerHTML = "";
-      document.getElementById("rawText").value = "";
-    }
+const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
 
-    function quickUrl(u) {
-      document.getElementById("urlInput").value = u;
-      loadPage();
-    }
+const app = express();
 
-    async function ask() {
-      const question = document.getElementById("questionInput").value.trim();
-      const answerBox = document.getElementById("answerBox");
-      const historyBox = document.getElementById("historyBox");
-      const rawBox = document.getElementById("rawText");
+// ✅ 云平台会通过环境变量 PORT 告诉你端口，
+// 本地跑的时候可以默认 5002
+const PORT = process.env.PORT || 5002;
 
-      if (!currentUrl) {
-        answerBox.textContent = "请先在上方输入并加载目标网页链接。";
-        return;
+console.log("Node 版本：", process.version);
+console.log("是否读取 DEEPSEEK_API_KEY:", !!process.env.DEEPSEEK_API_KEY);
+
+app.use(express.json());
+
+// 静态文件：当前目录
+app.use(express.static(__dirname));
+
+// 根路径返回 index.html
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// （可选）简单缓存，避免反复抓同一网页
+const pageCache = new Map();
+const CACHE_TTL = 10 * 60 * 1000; // 10 分钟
+
+async function fetchPageText(url) {
+  if (!url) return "";
+
+  const now = Date.now();
+  const cached = pageCache.get(url);
+  if (cached && now - cached.time < CACHE_TTL) {
+    console.log("⚡ 命中缓存：", url);
+    return cached.text;
+  }
+
+  try {
+    console.log("🌐 抓取网页：", url);
+    const res = await axios.get(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      timeout: 15000,
+    });
+
+    const $ = cheerio.load(res.data);
+    const text = $("body").text().replace(/\s+/g, " ").slice(0, 5000);
+
+    pageCache.set(url, { text, time: now });
+    return text;
+  } catch (err) {
+    console.error("❌ fetchPageText 抓取失败：", err.message);
+    return "";
+  }
+}
+
+async function askDeepSeek(prompt) {
+  try {
+    const res = await axios.post(
+      "https://api.deepseek.com/v1/chat/completions",
+      {
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        timeout: 20000,
       }
-      if (!question) {
-        answerBox.textContent = "请输入要询问的问题。";
-        return;
-      }
+    );
 
-      answerBox.textContent = "正在读取网页并向大模型提问，请稍等……";
+    return res.data.choices[0].message.content;
+  } catch (err) {
+    console.error("❌ DeepSeek 调用失败：", err.response?.data || err);
+    return `【AI 暂时不可用】\n错误信息：${err.message}`;
+  }
+}
 
-      try {
-        const res = await fetch("/ask", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: currentUrl, question }),
-        });
+// 主接口：/ask
+app.post("/ask", async (req, res) => {
+  console.log("📩 收到 /ask 请求：", req.body);
 
-        const data = await res.json();
+  const { url, question } = req.body;
 
-        if (data.answer) {
-          historyBox.innerHTML += `<p><b>我：</b>${question}</p>`;
-          historyBox.innerHTML += `<p><b>AI：</b>${data.answer.replace(
-            /\n/g,
-            "<br>"
-          )}</p><hr>`;
+  if (!question) {
+    return res.json({ answer: "", error: "问题不能为空" });
+  }
+  if (!url) {
+    return res.json({ answer: "", error: "缺少目标网页链接" });
+  }
 
-          answerBox.textContent = data.answer;
-          if (data.raw) {
-            rawBox.value = data.raw;
-          }
-        } else {
-          answerBox.textContent = data.error || "后端没有返回答案。";
-        }
-      } catch (e) {
-        console.error(e);
-        answerBox.textContent =
-          "请求失败，请确认云端服务器正在运行，并稍后重试。";
-      }
-    }
+  const pageText = await fetchPageText(url);
+  if (!pageText) {
+    return res.json({
+      answer: "",
+      error: "无法抓取该网页，可能被网站拒绝访问或网络异常。",
+    });
+  }
 
-    window.onload = function () {
-      // 初始不自动加载，用户自己输入链接
-    };
-  </script>
-</body>
-</html>
+  const prompt = `
+你是一名网页信息引导助手。
+以下是网页内容的一部分：
+${pageText}
+
+用户问题：${question}
+请根据网页内容，给出清晰简短的中文回答。`;
+
+  const answer = await askDeepSeek(prompt);
+  return res.json({ answer, raw: pageText });
+});
+
+// 启动服务
+app.listen(PORT, () => {
+  console.log(`服务器已启动：http://localhost:${PORT}`);
+  console.log("====== 正在等待请求 ======");
+});
