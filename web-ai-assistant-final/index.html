@@ -1,0 +1,71 @@
+<script>
+    let currentUrl = '';
+  
+    function loadPage() {
+      const url = document.getElementById('urlInput').value.trim();
+      const frame = document.getElementById('siteFrame');
+      if (!url) return;
+      currentUrl = url;
+      frame.src = url;
+      document.getElementById('answerBox').textContent =
+        '已加载网页：' +
+        url +
+        '\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”';
+      document.getElementById('historyBox').innerHTML = '';
+      document.getElementById('rawText').value = '';
+    }
+  
+    function quickUrl(u) {
+      document.getElementById('urlInput').value = u;
+      loadPage();
+    }
+  
+    async function ask() {
+      const question = document.getElementById('questionInput').value.trim();
+      const answerBox = document.getElementById('answerBox');
+      const historyBox = document.getElementById('historyBox');
+      const rawBox = document.getElementById('rawText');
+  
+      if (!currentUrl) {
+        answerBox.textContent = '请先在上方输入并加载目标网页链接。';
+        return;
+      }
+      if (!question) {
+        answerBox.textContent = '请输入要询问的问题。';
+        return;
+      }
+  
+      answerBox.textContent = '正在读取网页并向大模型提问，请稍等……';
+  
+      try {
+        const res = await fetch('/ask', {   // ⭐ 改成 5002 ⭐
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: currentUrl, question })
+        });
+  
+        const data = await res.json();
+  
+        if (data.answer) {
+          historyBox.innerHTML += `<p><b>我：</b>${question}</p>`;
+          historyBox.innerHTML += `<p><b>AI：</b>${data.answer.replace(
+            /\n/g,
+            '<br>'
+          )}</p><hr>`;
+  
+          answerBox.textContent = data.answer;
+          if (data.raw) {
+            rawBox.value = data.raw;
+          }
+        } else {
+          answerBox.textContent = data.error || '后端没有返回答案。';
+        }
+      } catch (e) {
+        console.error(e);
+        answerBox.textContent =
+          '请求失败，请确认服务器已在 5001 端口启动（node server.js）。';
+      }
+    }
+  
+    window.onload = loadPage;
+</script>
