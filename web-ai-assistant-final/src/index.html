@@ -1,71 +1,188 @@
-<script>
-    let currentUrl = '';
-  
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>网页信息引导助手 Demo</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    .left, .right {
+      box-sizing: border-box;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .left {
+      width: 50%;
+      border-right: 1px solid #ddd;
+    }
+    .right {
+      width: 50%;
+    }
+    #siteFrame {
+      flex: 1;
+      width: 100%;
+      border: 1px solid #ccc;
+      margin-top: 8px;
+    }
+    #answerBox {
+      border: 1px solid #ccc;
+      padding: 8px;
+      min-height: 80px;
+      white-space: pre-wrap;
+      margin-top: 8px;
+    }
+    #historyBox {
+      flex: 1;
+      border: 1px solid #ccc;
+      padding: 8px;
+      margin-top: 8px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    #rawText {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 8px;
+      height: 120px;
+      resize: vertical;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    button {
+      margin-left: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 左侧：加载网页 -->
+  <div class="left">
+    <div>
+      <input
+        id="urlInput"
+        type="text"
+        style="width: 70%;"
+        placeholder="请输入要分析的网页链接，例如：https://www.jd.com"
+      />
+      <button onclick="loadPage()">加载网页</button>
+      <button onclick="quickUrl('https://www.jd.com')">京东首页</button>
+    </div>
+    <iframe id="siteFrame"></iframe>
+  </div>
+
+  <!-- 右侧：提问 & 答案 -->
+  <div class="right">
+    <div>
+      <textarea
+        id="questionInput"
+        rows="3"
+        placeholder="在这里输入你想问 AI 的问题，比如：我应该去哪里查账户余额？"
+      ></textarea>
+      <br />
+      <button onclick="ask()">发送问题</button>
+    </div>
+
+    <div id="answerBox">请先在左侧输入并加载一个网页链接。</div>
+    <div id="historyBox"></div>
+
+    <textarea
+      id="rawText"
+      readonly
+      placeholder="这里显示抓取到的原始网页文本（截断后）"
+    ></textarea>
+  </div>
+
+  <script>
+    let currentUrl = "";
+
     function loadPage() {
-      const url = document.getElementById('urlInput').value.trim();
-      const frame = document.getElementById('siteFrame');
+      const urlInput = document.getElementById("urlInput");
+      const frame = document.getElementById("siteFrame");
+      if (!urlInput || !frame) return;
+
+      const url = urlInput.value.trim();
       if (!url) return;
+
       currentUrl = url;
       frame.src = url;
-      document.getElementById('answerBox').textContent =
-        '已加载网页：' +
+      document.getElementById("answerBox").textContent =
+        "已加载网页：" +
         url +
-        '\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”';
-      document.getElementById('historyBox').innerHTML = '';
-      document.getElementById('rawText').value = '';
+        "\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”";
+      document.getElementById("historyBox").innerHTML = "";
+      document.getElementById("rawText").value = "";
     }
-  
+
     function quickUrl(u) {
-      document.getElementById('urlInput').value = u;
+      const input = document.getElementById("urlInput");
+      if (!input) return;
+      input.value = u;
       loadPage();
     }
-  
+
     async function ask() {
-      const question = document.getElementById('questionInput').value.trim();
-      const answerBox = document.getElementById('answerBox');
-      const historyBox = document.getElementById('historyBox');
-      const rawBox = document.getElementById('rawText');
-  
+      const questionInput = document.getElementById("questionInput");
+      const answerBox = document.getElementById("answerBox");
+      const historyBox = document.getElementById("historyBox");
+      const rawBox = document.getElementById("rawText");
+
+      if (!questionInput || !answerBox || !historyBox || !rawBox) return;
+
+      const question = questionInput.value.trim();
       if (!currentUrl) {
-        answerBox.textContent = '请先在上方输入并加载目标网页链接。';
+        answerBox.textContent = "请先在上方输入并加载目标网页链接。";
         return;
       }
       if (!question) {
-        answerBox.textContent = '请输入要询问的问题。';
+        answerBox.textContent = "请输入要询问的问题。";
         return;
       }
-  
-      answerBox.textContent = '正在读取网页并向大模型提问，请稍等……';
-  
+
+      answerBox.textContent = "正在读取网页并向大模型提问，请稍等……";
+
       try {
-        const res = await fetch('/ask', {   // ⭐ 改成 5002 ⭐
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: currentUrl, question })
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: currentUrl, question }),
         });
-  
+
         const data = await res.json();
-  
+
         if (data.answer) {
           historyBox.innerHTML += `<p><b>我：</b>${question}</p>`;
           historyBox.innerHTML += `<p><b>AI：</b>${data.answer.replace(
             /\n/g,
-            '<br>'
+            "<br>"
           )}</p><hr>`;
-  
+
           answerBox.textContent = data.answer;
-          if (data.raw) {
-            rawBox.value = data.raw;
-          }
+          if (data.raw) rawBox.value = data.raw;
         } else {
-          answerBox.textContent = data.error || '后端没有返回答案。';
+          answerBox.textContent = data.error || "后端没有返回答案。";
         }
       } catch (e) {
         console.error(e);
         answerBox.textContent =
-          '请求失败，请确认服务器已在 5001 端口启动（node server.js）。';
+          "请求失败，请稍后重试（检查云端服务是否正常）。";
       }
     }
-  
-    window.onload = loadPage;
-</script>
+
+    // 不自动 loadPage，避免一进来就报错
+    window.onload = function () {
+      // 初始化提示已经写在 answerBox 里
+    };
+  </script>
+</body>
+</html>
