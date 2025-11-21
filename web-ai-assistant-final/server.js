@@ -23,7 +23,8 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 
 const app = express();
-const PORT = 5002;  // ⭐ 使用 5002（稳定无冲突）
+const PORT = process.env.PORT || 5002;
+  // ⭐ 使用 5002（稳定无冲突）
 
 console.log("Node 版本：", process.version);
 console.log("是否读取 DEEPSEEK_API_KEY:", !!process.env.DEEPSEEK_API_KEY);
@@ -118,3 +119,4 @@ server.on("error", (err) => {
 setInterval(() => {
     console.log("⏱ 心跳：进程仍在运行");
 }, 5000);
+
