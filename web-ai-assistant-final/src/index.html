@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>网页信息引导助手 Demo</title>
+  <title>网页信息引导助手</title>
   <style>
     body {
       margin: 0;
@@ -73,7 +73,7 @@
         id="urlInput"
         type="text"
         style="width: 70%;"
-        placeholder="请输入要分析的网页链接，例如：https://www.jd.com"
+        placeholder="请输入网页链接"
       />
       <button onclick="loadPage()">加载网页</button>
       <button onclick="quickUrl('https://www.runoob.com/')">菜鸟首页</button>
@@ -120,7 +120,7 @@
       document.getElementById("answerBox").textContent =
         "已加载网页：" +
         url +
-        "\n现在可以在右侧提问，比如“我需要去哪里查询账户余额？”";
+        "\n输入问题";
       document.getElementById("historyBox").innerHTML = "";
       document.getElementById("rawText").value = "";
     }
@@ -186,4 +186,5 @@
   </script>
 </body>
 </html>
+
 
